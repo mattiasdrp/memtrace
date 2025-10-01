@@ -41,8 +41,32 @@ let start_tracing ~context ~sampling_rate ~filename =
 let stop_tracing t =
   Memprof_tracer.stop t
 
+let exit_function () =
+  Option.iter stop_tracing (Memprof_tracer.active_tracer ())
+
+let () = at_exit exit_function
+
 let () =
-  at_exit (fun () -> Option.iter stop_tracing (Memprof_tracer.active_tracer ()))
+  let signals = Sys.[ sigint; sigalrm; sigterm ] in
+  List.iter
+    (fun signal ->
+      Sys.set_signal signal
+        Sys.(
+          Signal_handle
+            (fun i ->
+              exit_function ();
+              exit i)))
+    signals
+
+let () =
+  let signals = Sys.[ sigusr1; sigusr2 ] in
+  List.iter
+    (fun signal ->
+      try
+        Sys.set_signal signal Sys.(Signal_handle (fun _ -> exit_function ()))
+        (* These signals are not handled by Windows *)
+      with Invalid_argument _ -> ())
+    signals
 
 let default_sampling_rate = 1e-6
 
